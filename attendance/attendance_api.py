@@ -14,7 +14,9 @@ from flask import Flask, jsonify, request
 from elasticapm.contrib.flask import ElasticAPM
 from elasticapm.handlers.logging import LoggingHandler
 
-ELASTIC_APM_SERVER_URL = os.getenv('ELASTIC_APM_SERVER_URL', 'http://localhost:8200')
+ELASTIC_APM_SERVER_URL = os.getenv(
+    'ELASTIC_APM_SERVER_URL', 'http://localhost:8200'
+)
 ELASTIC_APM_SERVICE_NAME = os.getenv('ELASTIC_APM_SERVICE_NAME', 'attendance')
 CONFIG_FILE = os.getenv('CONFIG_FILE', '/app/config/config.yaml')
 
@@ -70,7 +72,8 @@ def push_attendance_data():
 
     try:
         cursor = connection.cursor()
-        sql = "INSERT INTO `Employee` (`id`, `status`, `date`) VALUES (%s, %s, %s)"
+        sql = """INSERT INTO `Employee` (`id`, `status`, `date`) 
+         VALUES (%s, %s, %s)"""
         cursor.execute(sql, (record['id'], record['status'], record['date']))
         app.logger.info("Successfully pushed data in MySQL")
         return jsonify(message="Successfully uploaded the attendance data"), 200
