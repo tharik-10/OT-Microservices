@@ -28,7 +28,7 @@ services:
       - 5601:5601
     environment:
       ELASTICSEARCH_HOSTS: '["http://empms-es:9200"]'
-      ELASTICSEARCH_SERVICEACCOUNTTOKEN: AAEAAWVsYXN0aWMva2liYW5hL2tpYmFuYToxa0pGUEs3WVRINmQwaG5JZ29NN21n
+      ELASTICSEARCH_SERVICEACCOUNTTOKEN: AAEAAWVsYXN0aWMva2liYW5hL2tpYmFuYS10b2tlbjo5U3FsbXQ2c1RiaVZZcldfdjlhTlBn
     depends_on:
       - empms-es
     networks:
@@ -54,7 +54,7 @@ services:
       context: attendance/
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.empms-attendance.rule=Host(`ot-microservices.opstree.com`) && PathPrefix(`/attendance/`)"
+      - "traefik.http.routers.empms-attendance.rule=Host(`ot-microservices-alb-36441409.us-east-1.elb.amazonaws.com`) && PathPrefix(`/attendance/`)"
     volumes:
       - type: bind
         source: ./attendance/config.yaml
@@ -75,7 +75,7 @@ services:
       context: salary/
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.empms-salary.rule=Host(`ot-microservices.opstree.com`) && PathPrefix(`/salary/`)"
+      - "traefik.http.routers.empms-salary.rule=Host(`ot-microservices-alb-36441409.us-east-1.elb.amazonaws.com`) && PathPrefix(`/salary/`)"
     environment:
 #      ELASTIC_APM_SERVICE_NAME: "salary"
 #      ELASTIC_APM_SERVER_URL: "http://apm-server:8200"
@@ -93,7 +93,7 @@ services:
       context: employee/
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.empms-employee.rule=Host(`ot-microservices.opstree.com`) && PathPrefix(`/employee/`)"
+      - "traefik.http.routers.empms-employee.rule=Host(`ot-microservices-alb-36441409.us-east-1.elb.amazonaws.com`) && PathPrefix(`/employee/`)"
     volumes:
       - type: bind
         source: ./employee/config.yaml
@@ -114,18 +114,20 @@ services:
       context: frontend/
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.empms-frontend.rule=Host(`ot-microservices.opstree.com`) && PathPrefix(`/`)"
+      - "traefik.http.routers.empms-frontend.rule=Host(`ot-microservices-alb-36441409.us-east-1.elb.amazonaws.com`) && PathPrefix(`/`)"
       - "traefik.http.services.empms-frontend.loadbalancer.server.port=3000"
     networks:
       - ot-microservices
 
   empms-traefik:
-    image: traefik:v2.9
+    image: traefik:latest
     command:
       - "--api.insecure=true"
       - "--providers.docker"
       - "--entrypoints.web.address=:80"
       - "--providers.docker.exposedbydefault=false"
+    environment:
+      - DOCKER_API_VERSION=1.53
     ports:
       - 80:80
       - 8080:8080

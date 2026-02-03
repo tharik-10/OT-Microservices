@@ -9,3 +9,14 @@ frontend/build
 frontend/.env
 notification/notification
 notification/test_config.yaml
+# Ignore environment files containing secrets
+.env
+
+# Ignore Elasticsearch data and logs
+elasticsearch_data/
+logs/
+*.log
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
