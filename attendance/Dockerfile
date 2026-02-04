@@ -1,4 +1,4 @@
-FROM python:latest
+FROM python:3.13-slim
 MAINTAINER OpsTree Solutions
 LABEL application="attendance" \
       stack="OT-Microservices"
