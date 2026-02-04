@@ -5,7 +5,6 @@ import (
 	"context"
 	conf "employee/config"
 	"encoding/json"
-	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/elastic/go-elasticsearch/v8/esutil"
 	"github.com/sirupsen/logrus"
 	"sync/atomic"
