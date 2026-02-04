@@ -13,18 +13,18 @@ import (
 )
 
 var (
-	res             *esapi.Response
 	countSuccessful uint64
 	indexName       = "employee-management"
-	r               map[string]interface{}
 )
 
-// PostDataInSearch method will push data to elasticsearch
+// PostDataInSearch pushes data to Elasticsearch
 func PostDataInSearch(c conf.Configuration, id string, data interface{}, ctxReq context.Context) {
 	esClient, err := generateElasticClient(c)
 	if err != nil {
-		logrus.Errorf("Unable to create client connection with elasticsearch: %v", err)
+		logrus.Errorf("Unable to create elastic client: %v", err)
+		return
 	}
+
 	bulkIndexer, err := esutil.NewBulkIndexer(esutil.BulkIndexerConfig{
 		Index:         indexName,
 		Client:        esClient,
@@ -32,32 +32,36 @@ func PostDataInSearch(c conf.Configuration, id string, data interface{}, ctxReq 
 		FlushBytes:    int(5e+6),
 		FlushInterval: 30 * time.Second,
 	})
-
 	if err != nil {
-		logrus.Errorf("Error creating the bulk indexer: %v", err)
+		logrus.Errorf("Error creating bulk indexer: %v", err)
+		return
 	}
-	checkIndexState := indexExists(c, indexName)
 
-	if checkIndexState != 200 {
-		res, err = esClient.Indices.Create(indexName)
-		res.Body.Close()
+	if indexExists(c, indexName) != 200 {
+		res, err := esClient.Indices.Create(indexName)
 		if err != nil {
-			logrus.Errorf("Cannot create the employee index: %v, %v", err, res)
+			logrus.Errorf("Error creating index: %v", err)
+			return
 		}
+		defer res.Body.Close()
 	}
 
 	putDataInSearch(data, bulkIndexer, id, ctxReq)
+
 	if err := bulkIndexer.Close(ctxReq); err != nil {
-		logrus.Errorf("Unexpected error: While closing bulk indexing: %v", err)
+		logrus.Errorf("Error closing bulk indexer: %v", err)
 	}
-	logrus.Infof("Successfully pushed employee's information in elasticsearch")
+
+	logrus.Infof("Employee data indexed successfully")
 }
 
 func putDataInSearch(jsonData interface{}, bulkIndexer esutil.BulkIndexer, id string, ctxReq context.Context) {
 	data, err := json.Marshal(jsonData)
 	if err != nil {
-		logrus.Errorf("Cannot marshal data into JSON: %v", err)
+		logrus.Errorf("JSON marshal failed: %v", err)
+		return
 	}
+
 	err = bulkIndexer.Add(
 		ctxReq,
 		esutil.BulkIndexerItem{
@@ -68,126 +72,126 @@ func putDataInSearch(jsonData interface{}, bulkIndexer esutil.BulkIndexer, id st
 				atomic.AddUint64(&countSuccessful, 1)
 			},
 			OnFailure: func(ctx context.Context, item esutil.BulkIndexerItem, res esutil.BulkIndexerResponseItem, err error) {
-				if err != nil {
-					logrus.Errorf("ERROR: Performing bulk indexing: %v", err)
-				} else {
-					logrus.Errorf("ERROR: Performing bulk indexing: %v", err)
-				}
+				logrus.Errorf("Bulk indexing failed: %v", err)
 			},
 		},
 	)
+
 	if err != nil {
-		logrus.Errorf("Unexpected error: Bulk operation over index: %v", err)
+		logrus.Errorf("Bulk add failed: %v", err)
 	}
 }
 
 func indexExists(c conf.Configuration, index string) int {
 	esClient, err := generateElasticClient(c)
 	if err != nil {
-		logrus.Errorf("Unable to create client connection with elastic: %v", err)
+		logrus.Errorf("Elastic client error: %v", err)
+		return 500
 	}
-	resp, err := esClient.Indices.Exists([]string{indexName})
+
+	resp, err := esClient.Indices.Exists([]string{index})
 	if err != nil {
-		logrus.Errorf("Unexpected error: while checking index: %v", err)
+		logrus.Errorf("Index check failed: %v", err)
 		return 404
 	}
+	defer resp.Body.Close()
+
 	return resp.StatusCode
 }
 
-// SearchDataInElastic will search data in elasticsearch
-func SearchDataInElastic(c conf.Configuration, Id string, ctxReq context.Context) map[string]interface{} {
+// SearchDataInElastic searches by employee ID
+func SearchDataInElastic(c conf.Configuration, id string, ctxReq context.Context) map[string]interface{} {
 	var buf bytes.Buffer
+	result := make(map[string]interface{})
+
 	query := map[string]interface{}{
 		"query": map[string]interface{}{
 			"match": map[string]interface{}{
-				"id": Id,
+				"id": id,
 			},
 		},
 	}
+
 	if err := json.NewEncoder(&buf).Encode(query); err != nil {
-		logrus.Errorf("Error encoding query: %v", err)
+		logrus.Errorf("Query encode error: %v", err)
+		return result
 	}
-	es, err := generateElasticClient(c)
 
+	es, err := generateElasticClient(c)
 	if err != nil {
-		logrus.Errorf("Unable to create client connection with elastic: %v", err)
+		logrus.Errorf("Elastic client error: %v", err)
+		return result
 	}
-	// Perform the search request.
-	res, err = es.Search(
+
+	res, err := es.Search(
 		es.Search.WithContext(ctxReq),
 		es.Search.WithIndex(indexName),
 		es.Search.WithBody(&buf),
 		es.Search.WithTrackTotalHits(true),
 	)
-
+	if err != nil {
+		logrus.Errorf("Search failed: %v", err)
+		return result
+	}
 	defer res.Body.Close()
 
 	if res.IsError() {
-		var e map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
-			logrus.Errorf("Error parsing the response body: %v", err)
-		} else {
-			// Print the response status and error information.
-			logrus.Errorf("[%v] %v: %v",
-				res.Status(),
-				e["error"].(map[string]interface{})["type"],
-				e["error"].(map[string]interface{})["reason"],
-			)
-		}
+		logrus.Errorf("Search returned error status: %s", res.Status())
+		return result
 	}
 
-	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		logrus.Errorf("Error parsing the response body: %v", err)
+	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+		logrus.Errorf("Response decode error: %v", err)
 	}
-	return r
+
+	return result
 }
 
-// SearchALLDataInElastic will search all data in elasticsearch
+// SearchALLDataInElastic returns all documents
 func SearchALLDataInElastic(c conf.Configuration, ctxReq context.Context) map[string]interface{} {
-	var buf bytes.Buffer
-	es, err := generateElasticClient(c)
+	result := make(map[string]interface{})
 
+	es, err := generateElasticClient(c)
 	if err != nil {
-		logrus.Errorf("Unable to create client connection with elastic: %v", err)
+		logrus.Errorf("Elastic client error: %v", err)
+		return result
 	}
-	// Perform the search request.
-	res, err = es.Search(
+
+	res, err := es.Search(
 		es.Search.WithContext(ctxReq),
 		es.Search.WithIndex(indexName),
-		es.Search.WithBody(&buf),
 		es.Search.WithTrackTotalHits(true),
 	)
-
+	if err != nil {
+		logrus.Errorf("Search failed: %v", err)
+		return result
+	}
 	defer res.Body.Close()
 
 	if res.IsError() {
-		var e map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
-			logrus.Errorf("Error parsing the response body: %v", err)
-		} else {
-			// Print the response status and error information.
-			logrus.Errorf("[%v] %v: %v",
-				res.Status(),
-				e["error"].(map[string]interface{})["type"],
-				e["error"].(map[string]interface{})["reason"],
-			)
-		}
+		logrus.Errorf("Search returned error status: %s", res.Status())
+		return result
 	}
 
-	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		logrus.Errorf("Error parsing the response body: %v", err)
+	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+		logrus.Errorf("Response decode error: %v", err)
 	}
-	return r
+
+	return result
 }
 
-// CheckElasticHealth is a method to check elasticsearch health
+// CheckElasticHealth checks Elasticsearch availability
 func CheckElasticHealth(c conf.Configuration, ctxReq context.Context) (bool, error) {
 	es, err := generateElasticClient(c)
 	if err != nil {
-		logrus.Errorf("Unable to create client connection with elastic: %v", err)
+		return false, err
 	}
 
-	_ = es.Info.WithContext(ctxReq)
+	res, err := es.Info(es.Info.WithContext(ctxReq))
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
 
-	return true, nil
+	return res.StatusCode == 200, nil
 }
