@@ -18,7 +18,7 @@ ELASTIC_APM_SERVER_URL = os.getenv(
     'ELASTIC_APM_SERVER_URL', 'http://localhost:8200'
 )
 ELASTIC_APM_SERVICE_NAME = os.getenv('ELASTIC_APM_SERVICE_NAME', 'attendance')
-CONFIG_FILE = os.getenv('CONFIG_FILE', '/app/config/config.yaml')
+CONFIG_FILE = os.getenv('CONFIG_FILE', './config.yaml')
 
 app = Flask(__name__)
 
