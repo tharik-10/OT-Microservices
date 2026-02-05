@@ -1,11 +1,22 @@
-
 package com.opstree.microservice.salary.service;
 
 import com.opstree.microservice.salary.entity.SalaryDef;
 import java.util.List;
+import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
+import org.springframework.stereotype.Service;
 
-public interface SpringDataSalaryService {
+@Service
+public class ElasticsearchRestTemplateServiceImpl implements SpringDataSalaryService {
 
-    List<SalaryDef> getSalary();
+    private final ElasticsearchRestTemplate elasticsearchRestTemplate;
 
+    public ElasticsearchRestTemplateServiceImpl(ElasticsearchRestTemplate elasticsearchRestTemplate) {
+        this.elasticsearchRestTemplate = elasticsearchRestTemplate;
+    }
+
+    @Override
+    public List<SalaryDef> getSalary() {
+        // Logic for Elasticsearch template
+        return null; 
+    }
 }
