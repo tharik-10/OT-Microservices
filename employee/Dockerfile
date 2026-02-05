@@ -1,14 +1,14 @@
 FROM golang:1.18 as builder
 MAINTAINER OpsTree Solutions
 
-# Set the working directory first
+# Set working directory
 WORKDIR /go/src/employee
 
-# Copy the source code
+# Copy source code
 COPY ./ /go/src/employee
 
-# FIX: Remove the recursive ./... and build the specific package
-# This prevents Go from scanning your Jenkins 'go-cache' folder
+# FIX: Use 'go mod download' and build the specific path '.' 
+# to avoid scanning external cache folders
 RUN go mod download && \
     go build -o employee .
 
@@ -16,13 +16,14 @@ FROM alpine:latest
 MAINTAINER OpsTree Solutions
 WORKDIR /app
 
-# Install necessary libraries for Go binaries to run on Alpine
+# Install necessary libraries for Alpine compatibility
 RUN apk add --no-cache libc6-compat curl
 
-# Copy the binary from the builder stage
+# Copy binary from builder
 COPY --from=builder /go/src/employee/employee /app/
 
-# Copy config to the location the ENV expects
+# Setup config
+RUN mkdir -p /root/config
 COPY ./config.yaml /root/config/config.yaml
 ENV CONFIG_FILE "/root/config/config.yaml"
 
