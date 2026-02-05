@@ -1,22 +1,23 @@
 package com.opstree.microservice.salary.service;
 
 import com.opstree.microservice.salary.entity.SalaryDef;
-import com.opstree.microservice.salary.repository.SalaryRepository;
 import java.util.List;
+import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-public class SpringDataSalaryServiceImpl implements SpringDataSalaryService {
+public class ElasticsearchRestTemplateServiceImpl implements SalaryService {
 
-    private final SalaryRepository salaryRepository;
+    private final ElasticsearchRestTemplate elasticsearchRestTemplate;
 
-    // Manual constructor ensures Maven compiles even if Lombok processors are missing
-    public SpringDataSalaryServiceImpl(SalaryRepository salaryRepository) {
-        this.salaryRepository = salaryRepository;
+    // Manual constructor to bypass Lombok compilation issues
+    public ElasticsearchRestTemplateServiceImpl(ElasticsearchRestTemplate elasticsearchRestTemplate) {
+        this.elasticsearchRestTemplate = elasticsearchRestTemplate;
     }
 
     @Override
     public List<SalaryDef> getSalary() {
-        return salaryRepository.findAllSalary();
+        // Your existing logic here, for example:
+        return null; 
     }
 }
