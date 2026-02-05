@@ -1,4 +1,5 @@
-FROM golang:1.18 as builder
+FROM golang:1.18-bullseye as builder
+
 MAINTAINER OpsTree Solutions
 
 # Set working directory
