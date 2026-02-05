@@ -1,21 +1,22 @@
 package com.opstree.microservice.salary.service;
 
 import com.opstree.microservice.salary.entity.SalaryDef;
-import com.opstree.microservice.salary.repository.SalaryRepository;
 import java.util.List;
+import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-public class SpringDataSalaryServiceImpl implements SpringDataSalaryService {
+public class ElasticsearchRestTemplateServiceImpl implements SpringDataSalaryService {
 
-    private final SalaryRepository salaryRepository;
+    private final ElasticsearchRestTemplate elasticsearchRestTemplate;
 
-    public SpringDataSalaryServiceImpl(SalaryRepository salaryRepository) {
-        this.salaryRepository = salaryRepository;
+    // ADD THIS CONSTRUCTOR MANUALLY
+    public ElasticsearchRestTemplateServiceImpl(ElasticsearchRestTemplate elasticsearchRestTemplate) {
+        this.elasticsearchRestTemplate = elasticsearchRestTemplate;
     }
 
     @Override
     public List<SalaryDef> getSalary() {
-        return salaryRepository.findAllSalary();
+        return null; // Or your existing logic
     }
 }
