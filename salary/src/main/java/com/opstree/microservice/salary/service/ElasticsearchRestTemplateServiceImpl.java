@@ -5,7 +5,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.client.indices.CreateIndexRequest;
@@ -25,14 +24,18 @@ import org.springframework.stereotype.Service;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
+// Removed @RequiredArgsConstructor because the build environment is failing to process it
 public class ElasticsearchRestTemplateServiceImpl implements ElasticsearchRestTemplateService {
 
     private final ElasticsearchRestTemplate elasticsearchRestTemplate;
 
+    // MANUAL CONSTRUCTOR: This does exactly what @RequiredArgsConstructor used to do.
+    public ElasticsearchRestTemplateServiceImpl(ElasticsearchRestTemplate elasticsearchRestTemplate) {
+        this.elasticsearchRestTemplate = elasticsearchRestTemplate;
+    }
+
     public List<SalaryDef> getSalaryInfo() {
         Query query = new NativeSearchQueryBuilder()
-//                .withQuery(QueryBuilders.matchQuery("name", "Abhishek"))
                 .withQuery(QueryBuilders.matchAllQuery())
                 .build();
         SearchHits<SalaryDef> searchHits = elasticsearchRestTemplate.search(query, SalaryDef.class);
