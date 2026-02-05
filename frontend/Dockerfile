@@ -1,20 +1,19 @@
 FROM node:18-bullseye
+MAINTAINER OpsTree Solutions
 
-MAINTAINER Opstree Solutions
+# Set working directory
+WORKDIR /app
 
-COPY . /app
-
-WORKDIR /app/
-
+# Install git (using a modern base image where repositories work)
 RUN apt-get update -y && \
     apt-get install git -y
 
-RUN npm install 
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm install
 
-RUN npm run build
-
-RUN yarn global add serve
+# Copy the rest of the code
+COPY . .
 
 EXPOSE 3000
-
-ENTRYPOINT ["serve", "-s", "build"]
+CMD ["npm", "start"]
