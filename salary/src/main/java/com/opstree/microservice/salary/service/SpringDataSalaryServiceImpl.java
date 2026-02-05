@@ -10,7 +10,6 @@ public class SpringDataSalaryServiceImpl implements SpringDataSalaryService {
 
     private final SalaryRepository salaryRepository;
 
-    // Manual constructor
     public SpringDataSalaryServiceImpl(SalaryRepository salaryRepository) {
         this.salaryRepository = salaryRepository;
     }
