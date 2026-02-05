@@ -8,7 +8,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.search.SearchRequest;
@@ -22,11 +21,18 @@ import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
-public class HighLevelClientSalaryServiceImpl implements HighLevelClientSalaryService{
+// STEP 1: Remove @RequiredArgsConstructor
+public class HighLevelClientSalaryServiceImpl implements HighLevelClientSalaryService {
+    
     private final RestHighLevelClient restHighLevelClient;
     private final ObjectMapper objectMapper;
+
+    // STEP 2: Add this manual constructor
+    public HighLevelClientSalaryServiceImpl(RestHighLevelClient restHighLevelClient, ObjectMapper objectMapper) {
+        this.restHighLevelClient = restHighLevelClient;
+        this.objectMapper = objectMapper;
+    }
 
     public SalaryDef getSalary() {
         SearchRequest searchRequest = new SearchRequest("employee-management");
