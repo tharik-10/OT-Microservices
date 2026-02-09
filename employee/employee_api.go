@@ -1,6 +1,11 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"os"
+	"strings"
+
 	"employee/config"
 	"employee/elastic"
 
@@ -8,11 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"go.elastic.co/apm/module/apmgin/v2"
-
-	"encoding/json"
-	"net/http"
-	"os"
-	"strings"
 )
 
 var (
@@ -34,22 +34,26 @@ type EmployeeInfo struct {
 }
 
 func main() {
-	conf, err := config.ParseFile(configFile)
 	logrus.SetFormatter(&logrus.JSONFormatter{})
+
+	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file for management: %v", err)
+		logrus.Fatalf("Unable to parse configuration file: %v", err)
 	}
+
 	logrus.Infof("Running employee-management in webserver mode")
-	logrus.Infof("employee-management is listening on port: %v", conf.Employee.APIPort)
-	logrus.Infof("Endpoint is available now - http://0.0.0.0:%v", conf.Employee.APIPort)
+	logrus.Infof("Listening on port: %v", conf.Employee.APIPort)
+
 	router := gin.Default()
-	config := cors.DefaultConfig()
 	router.Use(apmgin.Middleware(router))
-	config.AllowOrigins = []string{"*"}
-	config.AllowMethods = []string{"*"}
-	config.AllowHeaders = []string{"*"}
-	config.AllowCredentials = true
-	router.Use(cors.New(config))
+
+	corsCfg := cors.DefaultConfig()
+	corsCfg.AllowOrigins = []string{"*"}
+	corsCfg.AllowMethods = []string{"*"}
+	corsCfg.AllowHeaders = []string{"*"}
+	corsCfg.AllowCredentials = true
+	router.Use(cors.New(corsCfg))
+
 	router.POST("/employee/create", pushEmployeeData)
 	router.GET("/employee/search", fetchEmployeeData)
 	router.GET("/employee/search/all", fetchALLEmployeeData)
@@ -57,204 +61,164 @@ func main() {
 	router.GET("/employee/search/location", fetchEmployeeLocation)
 	router.GET("/employee/search/status", fetchEmployeeStatus)
 	router.GET("/employee/healthz", healthCheck)
-	router.Run(":" + conf.Employee.APIPort)
+
+	if err := router.Run(":" + conf.Employee.APIPort); err != nil {
+		logrus.Fatalf("Failed to start server: %v", err)
+	}
 }
 
 func pushEmployeeData(c *gin.Context) {
 	var request EmployeeInfo
 	if err := c.BindJSON(&request); err != nil {
 		errorResponse(c, http.StatusBadRequest, "Malformed request body")
-		logrus.Errorf("Error parsing the request body in JSON: %v", err)
+		logrus.Errorf("JSON bind error: %v", err)
 		return
 	}
 
-	info := EmployeeInfo{
-		ID:            request.ID,
-		Name:          request.Name,
-		JobRole:       request.JobRole,
-		JoiningDate:   request.JoiningDate,
-		Addresss:      request.Addresss,
-		Location:      request.Location,
-		Status:        request.Status,
-		EmailID:       request.EmailID,
-		AnnualPackage: request.AnnualPackage,
-		PhoneNumber:   request.PhoneNumber,
-	}
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file for management: %v", err)
+		logrus.Errorf("Config parse error: %v", err)
+		return
 	}
-	elastic.PostDataInSearch(conf, request.ID, info, c.Request.Context())
-	logrus.Infof("Successfully pushed employee's data to elasticsearch")
+
+	elastic.PostDataInSearch(conf, request.ID, request, c.Request.Context())
+	logrus.Infof("Employee data pushed to Elasticsearch")
+
+	c.JSON(http.StatusOK, gin.H{"message": "Employee created"})
 }
 
 func fetchEmployeeData(c *gin.Context) {
-	searchQuery := c.Request.URL.Query()
 	var searchValue string
-	response := &EmployeeInfo{}
-
-	for _, value := range searchQuery {
-		searchValue = strings.Join(value, "")
+	for _, v := range c.Request.URL.Query() {
+		searchValue = strings.Join(v, "")
 	}
+
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file for management: %v", err)
+		logrus.Errorf("Config parse error: %v", err)
+		return
 	}
+
 	data := elastic.SearchDataInElastic(conf, searchValue, c.Request.Context())
+	response := &EmployeeInfo{}
 
 	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
 		empData, err := json.Marshal(parsedData.(map[string]interface{})["_source"])
 		if err != nil {
-			logrus.Errorf("Unable to marshal response JSON: %v", err)
+			logrus.Errorf("Marshal error: %v", err)
+			continue
 		}
-		json.Unmarshal(empData, &response)
+		if err := json.Unmarshal(empData, response); err != nil {
+			logrus.Errorf("Unmarshal error: %v", err)
+		}
 	}
-	logrus.Infof("Successfully fetched employee information")
+
 	c.JSON(http.StatusOK, response)
 }
 
 func fetchALLEmployeeData(c *gin.Context) {
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file for management: %v", err)
+		logrus.Errorf("Config parse error: %v", err)
+		return
 	}
-	data := elastic.SearchALLDataInElastic(conf, c.Request.Context())
 
+	data := elastic.SearchALLDataInElastic(conf, c.Request.Context())
 	var employeeInfo []EmployeeInfo
+
 	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
 		response := &EmployeeInfo{}
 		empData, err := json.Marshal(parsedData.(map[string]interface{})["_source"])
 		if err != nil {
-			logrus.Errorf("Unable to marshal response JSON: %v", err)
+			logrus.Errorf("Marshal error: %v", err)
+			continue
 		}
-		json.Unmarshal(empData, &response)
+		if err := json.Unmarshal(empData, response); err != nil {
+			logrus.Errorf("Unmarshal error: %v", err)
+		}
 		employeeInfo = append(employeeInfo, *response)
 	}
-	logrus.Infof("Successfully fetched all employee's information")
+
 	c.JSON(http.StatusOK, employeeInfo)
 }
 
 func fetchEmployeeRoles(c *gin.Context) {
-	conf, err := config.ParseFile(configFile)
-	if err != nil {
-		logrus.Errorf("Unable to parse configuration file for management: %v", err)
-	}
-	data := elastic.SearchALLDataInElastic(conf, c.Request.Context())
+	employees := fetchAllEmployees(c)
+	result := make(map[string]int)
 
-	var employeeInfo []EmployeeInfo
-	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
-		response := &EmployeeInfo{}
-		empData, err := json.Marshal(parsedData.(map[string]interface{})["_source"])
-		if err != nil {
-			logrus.Errorf("Unable to marshal response JSON: %v", err)
-		}
-		json.Unmarshal(empData, &response)
-		employeeInfo = append(employeeInfo, *response)
+	for _, e := range employees {
+		result[e.JobRole]++
 	}
-	duplicate_frequency := make(map[string]int)
-	for _, role := range employeeInfo {
-		_, exist := duplicate_frequency[role.JobRole]
 
-		if exist {
-			duplicate_frequency[role.JobRole] += 1
-		} else {
-			duplicate_frequency[role.JobRole] = 1 // else start counting from 1
-		}
-	}
-	logrus.Infof("Successfully fetched all employee's roles")
-	c.JSON(http.StatusOK, duplicate_frequency)
+	c.JSON(http.StatusOK, result)
 }
 
 func fetchEmployeeLocation(c *gin.Context) {
-	conf, err := config.ParseFile(configFile)
-	if err != nil {
-		logrus.Errorf("Unable to parse configuration file for management: %v", err)
-	}
-	data := elastic.SearchALLDataInElastic(conf, c.Request.Context())
+	employees := fetchAllEmployees(c)
+	result := make(map[string]int)
 
-	var employeeInfo []EmployeeInfo
-	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
-		response := &EmployeeInfo{}
-		empData, err := json.Marshal(parsedData.(map[string]interface{})["_source"])
-		if err != nil {
-			logrus.Errorf("Unable to marshal response JSON: %v", err)
-		}
-		json.Unmarshal(empData, &response)
-		employeeInfo = append(employeeInfo, *response)
+	for _, e := range employees {
+		result[e.Location]++
 	}
-	duplicate_frequency := make(map[string]int)
-	for _, role := range employeeInfo {
-		_, exist := duplicate_frequency[role.Location]
 
-		if exist {
-			duplicate_frequency[role.Location] += 1
-		} else {
-			duplicate_frequency[role.Location] = 1
-		}
-	}
-	logrus.Infof("Successfully fetched all employee's Location information")
-	c.JSON(http.StatusOK, duplicate_frequency)
+	c.JSON(http.StatusOK, result)
 }
 
 func fetchEmployeeStatus(c *gin.Context) {
-	conf, err := config.ParseFile(configFile)
-	if err != nil {
-		logrus.Errorf("Unable to parse configuration file for management: %v", err)
-	}
-	data := elastic.SearchALLDataInElastic(conf, c.Request.Context())
+	employees := fetchAllEmployees(c)
+	result := make(map[string]int)
 
-	var employeeInfo []EmployeeInfo
-	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
-		response := &EmployeeInfo{}
-		empData, err := json.Marshal(parsedData.(map[string]interface{})["_source"])
-		if err != nil {
-			logrus.Errorf("Unable to marshal response JSON: %v", err)
-		}
-		json.Unmarshal(empData, &response)
-		employeeInfo = append(employeeInfo, *response)
+	for _, e := range employees {
+		result[e.Status]++
 	}
-	duplicate_frequency := make(map[string]int)
-	for _, role := range employeeInfo {
-		_, exist := duplicate_frequency[role.Status]
 
-		if exist {
-			duplicate_frequency[role.Status] += 1
-		} else {
-			duplicate_frequency[role.Status] = 1
-		}
-	}
-	logrus.Infof("Successfully fetched all employee's status information")
-	c.JSON(http.StatusOK, duplicate_frequency)
+	c.JSON(http.StatusOK, result)
 }
 
 func healthCheck(c *gin.Context) {
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file for management: %v", err)
+		errorResponse(c, http.StatusInternalServerError, "Config error")
+		return
 	}
 
 	status, err := elastic.CheckElasticHealth(conf, c.Request.Context())
-
-	if err != nil {
-		logrus.Errorf("Error while getting elasticsearch health: %v", err)
+	if err != nil || !status {
 		errorResponse(c, http.StatusBadRequest, "Elasticsearch is not running")
 		return
 	}
 
-	if status != false {
-		c.JSON(http.StatusOK, gin.H{
-			"status":   "up",
-			"database": "elasticsearch",
-			"message":  "Elasticsearch is running",
-		})
-		return
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "up",
+		"database": "elasticsearch",
+	})
+}
+
+func fetchAllEmployees(c *gin.Context) []EmployeeInfo {
+	conf, err := config.ParseFile(configFile)
+	if err != nil {
+		return nil
 	}
 
-	errorResponse(c, http.StatusBadRequest, "Elasticsearch is not running")
+	data := elastic.SearchALLDataInElastic(conf, c.Request.Context())
+	var employees []EmployeeInfo
+
+	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
+		response := &EmployeeInfo{}
+		empData, err := json.Marshal(parsedData.(map[string]interface{})["_source"])
+		if err != nil {
+			continue
+		}
+		if err := json.Unmarshal(empData, response); err != nil {
+			continue
+		}
+		employees = append(employees, *response)
+	}
+
+	return employees
 }
 
 func errorResponse(c *gin.Context, code int, err string) {
-	c.JSON(code, gin.H{
-		"error": err,
-	})
+	c.JSON(code, gin.H{"error": err})
 }
+
