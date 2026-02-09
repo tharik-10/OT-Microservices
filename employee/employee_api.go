@@ -17,7 +17,6 @@ import (
 
 var configFile string
 
-// EmployeeInfo struct will be the data structure for employee's information
 type EmployeeInfo struct {
 	ID            string  `json:"id"`
 	Name          string  `json:"name"`
@@ -32,10 +31,7 @@ type EmployeeInfo struct {
 }
 
 func init() {
-	// 1️⃣ Read CONFIG_FILE from env
 	configFile = os.Getenv("CONFIG_FILE")
-
-	// 2️⃣ Fallback to default if not set
 	if configFile == "" {
 		configFile = "./config.yaml"
 		logrus.Warn("CONFIG_FILE not set, using default ./config.yaml")
@@ -47,11 +43,8 @@ func main() {
 
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Fatalf("Unable to parse configuration file (%s): %v", configFile, err)
+		logrus.Fatalf("Unable to parse config (%s): %v", configFile, err)
 	}
-
-	logrus.Infof("Running employee-management in webserver mode")
-	logrus.Infof("employee-management is listening on port: %v", conf.Employee.APIPort)
 
 	router := gin.Default()
 	router.Use(apmgin.Middleware(router))
@@ -60,7 +53,6 @@ func main() {
 	corsCfg.AllowOrigins = []string{"*"}
 	corsCfg.AllowMethods = []string{"*"}
 	corsCfg.AllowHeaders = []string{"*"}
-	corsCfg.AllowCredentials = true
 	router.Use(cors.New(corsCfg))
 
 	router.POST("/employee/create", pushEmployeeData)
@@ -71,9 +63,7 @@ func main() {
 	router.GET("/employee/search/status", fetchEmployeeStatus)
 	router.GET("/employee/healthz", healthCheck)
 
-	if err := router.Run(":" + conf.Employee.APIPort); err != nil {
-		logrus.Fatalf("failed to start server: %v", err)
-	}
+	router.Run(":" + conf.Employee.APIPort)
 }
 
 func pushEmployeeData(c *gin.Context) {
@@ -85,35 +75,45 @@ func pushEmployeeData(c *gin.Context) {
 
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file: %v", err)
+		errorResponse(c, http.StatusInternalServerError, "Config error")
 		return
 	}
 
-	elastic.PostDataInSearch(conf, request.ID, request, c.Request.Context())
+	if err := elastic.PostDataInSearch(conf, request.ID, request, c.Request.Context()); err != nil {
+		errorResponse(c, http.StatusInternalServerError, "Elasticsearch error")
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Employee created"})
 }
 
 func fetchEmployeeData(c *gin.Context) {
-	searchQuery := c.Request.URL.Query()
-	var searchValue string
-	response := &EmployeeInfo{}
-
-	for _, value := range searchQuery {
-		searchValue = strings.Join(value, "")
-	}
-
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file: %v", err)
+		errorResponse(c, http.StatusInternalServerError, "Config error")
 		return
 	}
 
-	data := elastic.SearchDataInElastic(conf, searchValue, c.Request.Context())
-
-	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
-		empData, _ := json.Marshal(parsedData.(map[string]interface{})["_source"])
-		_ = json.Unmarshal(empData, response)
+	var searchValue string
+	for _, v := range c.Request.URL.Query() {
+		searchValue = strings.Join(v, "")
 	}
+
+	data := elastic.SearchDataInElastic(conf, searchValue, c.Request.Context())
+	if data == nil || data["hits"] == nil {
+		errorResponse(c, http.StatusInternalServerError, "Elasticsearch error")
+		return
+	}
+
+	hits := data["hits"].(map[string]interface{})["hits"].([]interface{})
+	if len(hits) == 0 {
+		c.JSON(http.StatusOK, gin.H{})
+		return
+	}
+
+	empData, _ := json.Marshal(hits[0].(map[string]interface{})["_source"])
+	response := &EmployeeInfo{}
+	json.Unmarshal(empData, response)
 
 	c.JSON(http.StatusOK, response)
 }
@@ -121,53 +121,53 @@ func fetchEmployeeData(c *gin.Context) {
 func fetchALLEmployeeData(c *gin.Context) {
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file: %v", err)
+		errorResponse(c, http.StatusInternalServerError, "Config error")
 		return
 	}
 
 	data := elastic.SearchALLDataInElastic(conf, c.Request.Context())
-	var employeeInfo []EmployeeInfo
-
-	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
-		response := &EmployeeInfo{}
-		empData, _ := json.Marshal(parsedData.(map[string]interface{})["_source"])
-		_ = json.Unmarshal(empData, response)
-		employeeInfo = append(employeeInfo, *response)
+	if data == nil || data["hits"] == nil {
+		errorResponse(c, http.StatusInternalServerError, "Elasticsearch error")
+		return
 	}
 
-	c.JSON(http.StatusOK, employeeInfo)
+	hits := data["hits"].(map[string]interface{})["hits"].([]interface{})
+	var employees []EmployeeInfo
+
+	for _, h := range hits {
+		emp := &EmployeeInfo{}
+		b, _ := json.Marshal(h.(map[string]interface{})["_source"])
+		json.Unmarshal(b, emp)
+		employees = append(employees, *emp)
+	}
+
+	c.JSON(http.StatusOK, employees)
 }
 
 func fetchEmployeeRoles(c *gin.Context) {
-	employeeInfo := fetchAllEmployeesInternal(c)
-	result := make(map[string]int)
-
-	for _, emp := range employeeInfo {
-		result[emp.JobRole]++
+	employees := fetchAllEmployeesInternal(c)
+	result := map[string]int{}
+	for _, e := range employees {
+		result[e.JobRole]++
 	}
-
 	c.JSON(http.StatusOK, result)
 }
 
 func fetchEmployeeLocation(c *gin.Context) {
-	employeeInfo := fetchAllEmployeesInternal(c)
-	result := make(map[string]int)
-
-	for _, emp := range employeeInfo {
-		result[emp.Location]++
+	employees := fetchAllEmployeesInternal(c)
+	result := map[string]int{}
+	for _, e := range employees {
+		result[e.Location]++
 	}
-
 	c.JSON(http.StatusOK, result)
 }
 
 func fetchEmployeeStatus(c *gin.Context) {
-	employeeInfo := fetchAllEmployeesInternal(c)
-	result := make(map[string]int)
-
-	for _, emp := range employeeInfo {
-		result[emp.Status]++
+	employees := fetchAllEmployeesInternal(c)
+	result := map[string]int{}
+	for _, e := range employees {
+		result[e.Status]++
 	}
-
 	c.JSON(http.StatusOK, result)
 }
 
@@ -197,18 +197,24 @@ func fetchAllEmployeesInternal(c *gin.Context) []EmployeeInfo {
 	}
 
 	data := elastic.SearchALLDataInElastic(conf, c.Request.Context())
+	if data == nil || data["hits"] == nil {
+		return nil
+	}
+
+	hits := data["hits"].(map[string]interface{})["hits"].([]interface{})
 	var employees []EmployeeInfo
 
-	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
+	for _, h := range hits {
 		emp := &EmployeeInfo{}
-		empData, _ := json.Marshal(parsedData.(map[string]interface{})["_source"])
-		_ = json.Unmarshal(empData, emp)
+		b, _ := json.Marshal(h.(map[string]interface{})["_source"])
+		json.Unmarshal(b, emp)
 		employees = append(employees, *emp)
 	}
 
 	return employees
 }
 
-func errorResponse(c *gin.Context, code int, errMsg string) {
-	c.JSON(code, gin.H{"error": errMsg})
+func errorResponse(c *gin.Context, code int, msg string) {
+	c.JSON(code, gin.H{"error": msg})
 }
+
