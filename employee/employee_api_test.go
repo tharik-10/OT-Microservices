@@ -8,15 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 )
-
-func skipIfElasticDisabled(t *testing.T) {
-	if os.Getenv("SKIP_ELASTIC_TESTS") == "true" {
-		t.Skip("Skipping Elasticsearch-dependent test (SKIP_ELASTIC_TESTS=true)")
-	}
-}
 
 func Test_main(t *testing.T) {
     // Skip because Elasticsearch is not available in CI
