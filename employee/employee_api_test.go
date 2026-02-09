@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 	"os"
+	"testing"
 )
+
 func skipIfElasticDisabled(t *testing.T) {
 	if os.Getenv("SKIP_ELASTIC_TESTS") == "true" {
 		t.Skip("Skipping Elasticsearch-dependent test (SKIP_ELASTIC_TESTS=true)")
@@ -28,12 +29,12 @@ func Test_main(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, mockResponse, string(w.Body.Bytes()))
+	// ✅ FIXED LINE
+	assert.Equal(t, mockResponse, w.Body.String())
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func Test_pushEmployeeData(t *testing.T) {
-	// Skip because Elasticsearch is not available in CI/local
 	t.Skip("Skipping Elasticsearch-dependent test")
 
 	r := SetUpRouter()
@@ -63,7 +64,6 @@ func Test_pushEmployeeData(t *testing.T) {
 }
 
 func Test_fetchALLEmployeeData(t *testing.T) {
-	// Skip because Elasticsearch is not available in CI/local
 	t.Skip("Skipping Elasticsearch-dependent test")
 
 	r := SetUpRouter()
@@ -80,4 +80,3 @@ func SetUpRouter() *gin.Engine {
 	router := gin.Default()
 	return router
 }
-
