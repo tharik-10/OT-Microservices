@@ -15,9 +15,7 @@ import (
 	"go.elastic.co/apm/module/apmgin/v2"
 )
 
-var (
-	configFile = os.Getenv("CONFIG_FILE")
-)
+var configFile string
 
 // EmployeeInfo struct will be the data structure for employee's information
 type EmployeeInfo struct {
@@ -33,12 +31,23 @@ type EmployeeInfo struct {
 	PhoneNumber   string  `json:"phone_number"`
 }
 
+func init() {
+	// 1️⃣ Read CONFIG_FILE from env
+	configFile = os.Getenv("CONFIG_FILE")
+
+	// 2️⃣ Fallback to default if not set
+	if configFile == "" {
+		configFile = "./config.yaml"
+		logrus.Warn("CONFIG_FILE not set, using default ./config.yaml")
+	}
+}
+
 func main() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Fatalf("Unable to parse configuration file: %v", err)
+		logrus.Fatalf("Unable to parse configuration file (%s): %v", configFile, err)
 	}
 
 	logrus.Infof("Running employee-management in webserver mode")
@@ -71,7 +80,6 @@ func pushEmployeeData(c *gin.Context) {
 	var request EmployeeInfo
 	if err := c.BindJSON(&request); err != nil {
 		errorResponse(c, http.StatusBadRequest, "Malformed request body")
-		logrus.Errorf("Error parsing request body: %v", err)
 		return
 	}
 
@@ -82,7 +90,7 @@ func pushEmployeeData(c *gin.Context) {
 	}
 
 	elastic.PostDataInSearch(conf, request.ID, request, c.Request.Context())
-	logrus.Infof("Successfully pushed employee data to elasticsearch")
+	c.JSON(http.StatusOK, gin.H{"message": "Employee created"})
 }
 
 func fetchEmployeeData(c *gin.Context) {
@@ -103,16 +111,8 @@ func fetchEmployeeData(c *gin.Context) {
 	data := elastic.SearchDataInElastic(conf, searchValue, c.Request.Context())
 
 	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
-		empData, err := json.Marshal(parsedData.(map[string]interface{})["_source"])
-		if err != nil {
-			logrus.Errorf("Unable to marshal response JSON: %v", err)
-			continue
-		}
-
-		if err := json.Unmarshal(empData, response); err != nil {
-			logrus.Errorf("Unable to unmarshal response JSON: %v", err)
-			continue
-		}
+		empData, _ := json.Marshal(parsedData.(map[string]interface{})["_source"])
+		_ = json.Unmarshal(empData, response)
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -130,18 +130,8 @@ func fetchALLEmployeeData(c *gin.Context) {
 
 	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
 		response := &EmployeeInfo{}
-
-		empData, err := json.Marshal(parsedData.(map[string]interface{})["_source"])
-		if err != nil {
-			logrus.Errorf("Unable to marshal response JSON: %v", err)
-			continue
-		}
-
-		if err := json.Unmarshal(empData, response); err != nil {
-			logrus.Errorf("Unable to unmarshal response JSON: %v", err)
-			continue
-		}
-
+		empData, _ := json.Marshal(parsedData.(map[string]interface{})["_source"])
+		_ = json.Unmarshal(empData, response)
 		employeeInfo = append(employeeInfo, *response)
 	}
 
@@ -184,32 +174,25 @@ func fetchEmployeeStatus(c *gin.Context) {
 func healthCheck(c *gin.Context) {
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file: %v", err)
+		errorResponse(c, http.StatusInternalServerError, "Config error")
 		return
 	}
 
 	status, err := elastic.CheckElasticHealth(conf, c.Request.Context())
-	if err != nil {
+	if err != nil || !status {
 		errorResponse(c, http.StatusBadRequest, "Elasticsearch is not running")
 		return
 	}
 
-	if status {
-		c.JSON(http.StatusOK, gin.H{
-			"status":   "up",
-			"database": "elasticsearch",
-			"message":  "Elasticsearch is running",
-		})
-		return
-	}
-
-	errorResponse(c, http.StatusBadRequest, "Elasticsearch is not running")
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "up",
+		"database": "elasticsearch",
+	})
 }
 
 func fetchAllEmployeesInternal(c *gin.Context) []EmployeeInfo {
 	conf, err := config.ParseFile(configFile)
 	if err != nil {
-		logrus.Errorf("Unable to parse configuration file: %v", err)
 		return nil
 	}
 
@@ -218,16 +201,8 @@ func fetchAllEmployeesInternal(c *gin.Context) []EmployeeInfo {
 
 	for _, parsedData := range data["hits"].(map[string]interface{})["hits"].([]interface{}) {
 		emp := &EmployeeInfo{}
-
-		empData, err := json.Marshal(parsedData.(map[string]interface{})["_source"])
-		if err != nil {
-			continue
-		}
-
-		if err := json.Unmarshal(empData, emp); err != nil {
-			continue
-		}
-
+		empData, _ := json.Marshal(parsedData.(map[string]interface{})["_source"])
+		_ = json.Unmarshal(empData, emp)
 		employees = append(employees, *emp)
 	}
 
@@ -235,8 +210,5 @@ func fetchAllEmployeesInternal(c *gin.Context) []EmployeeInfo {
 }
 
 func errorResponse(c *gin.Context, code int, errMsg string) {
-	c.JSON(code, gin.H{
-		"error": errMsg,
-	})
+	c.JSON(code, gin.H{"error": errMsg})
 }
-
