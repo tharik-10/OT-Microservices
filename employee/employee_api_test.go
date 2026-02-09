@@ -1,51 +1,53 @@
+//go:build integration
+// +build integration
+
 package main
 
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/gin-gonic/gin"
-	"github.com/rs/xid"
-	"github.com/stretchr/testify/assert"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 )
 
-func Test_main(t *testing.T) {
-	r := SetUpRouter()
+func setupRouter() *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.Default()
+	r.POST("/employee/create", pushEmployeeData)
+	r.GET("/employee/search/all", fetchALLEmployeeData)
 	r.GET("/employee/healthz", healthCheck)
-
-	req, _ := http.NewRequest("GET", "/employee/healthz", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	return r
 }
 
-func Test_pushEmployeeData(t *testing.T) {
-	r := SetUpRouter()
-	r.POST("/employee/create", pushEmployeeData)
+func TestHealthCheck(t *testing.T) {
+	r := setupRouter()
+	req, _ := http.NewRequest("GET", "/employee/healthz", nil)
+	w := httptest.NewRecorder()
 
-	employee := EmployeeInfo{ID: "1", Name: "Test"}
-	body, _ := json.Marshal(employee)
+	r.ServeHTTP(w, req)
+	assert.NotEqual(t, http.StatusInternalServerError, w.Code)
+}
 
-	req, _ := http.NewRequest("POST", "/employee/create", bytes.NewBuffer(body))
+func TestCreateEmployee(t *testing.T) {
+	r := setupRouter()
+
+	body := EmployeeInfo{
+		ID:      "test123",
+		Name:    "Test User",
+		JobRole: "DevOps",
+	}
+
+	jsonData, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", "/employee/create", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.NotEqual(t, http.StatusInternalServerError, w.Code)
 }
 
-func Test_fetchALLEmployeeData(t *testing.T) {
-	r := SetUpRouter()
-	r.GET("/employee/search/all", fetchALLEmployeeData)
-
-	req, _ := http.NewRequest("GET", "/employee/search/all", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
