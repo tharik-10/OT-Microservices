@@ -12,17 +12,24 @@ import (
 	"testing"
 	"os"
 )
+func skipIfElasticDisabled(t *testing.T) {
+	if os.Getenv("SKIP_ELASTIC_TESTS") == "true" {
+		t.Skip("Skipping Elasticsearch-dependent test (SKIP_ELASTIC_TESTS=true)")
+	}
+}
 
 func Test_main(t *testing.T) {
+	skipIfElasticDisabled(t)
+
 	mockResponse := `{"database":"elasticsearch","message":"Elasticsearch is running","status":"up"}`
 	r := SetUpRouter()
 	r.GET("/employee/healthz", healthCheck)
+
 	req, _ := http.NewRequest("GET", "/employee/healthz", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	responseData, _ := ioutil.ReadAll(w.Body)
-	assert.Equal(t, mockResponse, string(responseData))
+	assert.Equal(t, mockResponse, string(w.Body.Bytes()))
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
