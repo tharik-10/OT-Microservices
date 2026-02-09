@@ -79,10 +79,8 @@ func pushEmployeeData(c *gin.Context) {
 		return
 	}
 
-	if err := elastic.PostDataInSearch(conf, request.ID, request, c.Request.Context()); err != nil {
-		errorResponse(c, http.StatusInternalServerError, "Elasticsearch error")
-		return
-	}
+	// ✅ FIX: Do NOT expect error return
+	elastic.PostDataInSearch(conf, request.ID, request, c.Request.Context())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Employee created"})
 }
@@ -113,7 +111,7 @@ func fetchEmployeeData(c *gin.Context) {
 
 	empData, _ := json.Marshal(hits[0].(map[string]interface{})["_source"])
 	response := &EmployeeInfo{}
-	json.Unmarshal(empData, response)
+	_ = json.Unmarshal(empData, response)
 
 	c.JSON(http.StatusOK, response)
 }
@@ -137,7 +135,7 @@ func fetchALLEmployeeData(c *gin.Context) {
 	for _, h := range hits {
 		emp := &EmployeeInfo{}
 		b, _ := json.Marshal(h.(map[string]interface{})["_source"])
-		json.Unmarshal(b, emp)
+		_ = json.Unmarshal(b, emp)
 		employees = append(employees, *emp)
 	}
 
@@ -207,7 +205,7 @@ func fetchAllEmployeesInternal(c *gin.Context) []EmployeeInfo {
 	for _, h := range hits {
 		emp := &EmployeeInfo{}
 		b, _ := json.Marshal(h.(map[string]interface{})["_source"])
-		json.Unmarshal(b, emp)
+		_ = json.Unmarshal(b, emp)
 		employees = append(employees, *emp)
 	}
 
@@ -217,4 +215,3 @@ func fetchAllEmployeesInternal(c *gin.Context) []EmployeeInfo {
 func errorResponse(c *gin.Context, code int, msg string) {
 	c.JSON(code, gin.H{"error": msg})
 }
-
