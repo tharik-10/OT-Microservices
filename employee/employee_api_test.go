@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"os"
 )
 
 func Test_main(t *testing.T) {
