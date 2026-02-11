@@ -12,6 +12,10 @@ RUN apt-get update -y && \
 COPY package*.json ./
 RUN npm install
 
+RUN npm run build
+
+RUN yarn global add serve
+
 # Copy the rest of the code
 COPY . .
 
