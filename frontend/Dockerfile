@@ -1,23 +1,23 @@
 FROM node:16-bullseye-slim
 MAINTAINER OpsTree Solutions
 
-# Set working directory
 WORKDIR /app
 
-# Install git (using a modern base image where repositories work)
 RUN apt-get update -y && \
-    apt-get install git -y
+    apt-get install -y git
 
-# Copy package files and install dependencies
+# Copy package files first (better layer caching)
 COPY package*.json ./
 RUN npm install
 
+# Now copy full source code
+COPY . .
+
+# Now build (after source exists)
 RUN npm run build
 
 RUN yarn global add serve
 
-# Copy the rest of the code
-COPY . .
+EXPOSE 3000
 
-EXPOSE 80
-ENTRYPOINT ["serve", "-s", "build"]
+ENTRYPOINT ["serve", "-s", "build", "-l", "3000"]
