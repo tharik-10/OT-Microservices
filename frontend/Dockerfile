@@ -19,5 +19,5 @@ RUN yarn global add serve
 # Copy the rest of the code
 COPY . .
 
-EXPOSE 3000
+EXPOSE 80
 ENTRYPOINT ["serve", "-s", "build"]
