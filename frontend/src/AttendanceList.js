@@ -10,7 +10,7 @@ class ListEmployee extends React.Component {
 	}
 	
 	loadData() {
-		fetch('/attendance/search')
+		fetch('http://ot-microservices-alb-36441409.us-east-1.elb.amazonaws.com/attendance/search')
 			.then(response => response.json())
 			.then(data => {
 				this.setState({data: data })
