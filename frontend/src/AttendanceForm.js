@@ -59,7 +59,7 @@ const FormikApp = withFormik({
   },
   handleSubmit(values, { props, resetForm, setErrors, setSubmitting }) {
     console.log(JSON.stringify(values))
-    fetch('/attendance/create', {
+    fetch('http://ot-microservices-alb-36441409.us-east-1.elb.amazonaws.com/attendance/create', {
       method: 'POST',
       body: JSON.stringify(values),
       headers: {
